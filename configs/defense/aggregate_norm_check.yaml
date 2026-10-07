@@ -1,0 +1,15 @@
+# Aggregate-level norm check on ||A_bar||_F (plan v3 T8, experiment E-G).
+# The check a reviewer proposes first: a LOUD Channel A attack inflates the transmitted
+# A_i, so the factor average becomes anomalous even though every dW_i is untouched.
+# T8's question is what degradation survives UNDER this constraint, so the default action
+# is `monitor` — it reports pass/fail without acting, and the attacker optimises against
+# it. Its statistics are gauge-VARIANT by design and are tagged as such: read them as
+# drift against a benign twin, never as a property of a round.
+name: aggregate_norm_check
+tolerance: 2.0            # fail when ||A_bar||_F > tolerance x running baseline
+tolerance_low: 2.0        # two_sided only: fail when ||A_bar||_F < baseline / this
+baseline_momentum: 0.9    # EMA; a slow attack can walk the baseline along with it
+baseline_half_life: null  # rounds; overrides baseline_momentum when set (.inf = frozen)
+direction: inflation      # inflation -> growth only; two_sided -> also watch shrinkage
+action: monitor           # monitor -> report only (q = p); clip -> rescale q to pass
+warmup_rounds: 1          # rounds accepted unconditionally while the baseline forms

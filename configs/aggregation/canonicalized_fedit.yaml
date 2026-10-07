@@ -1,0 +1,5 @@
+# Per-client QR gauge-fixing, then factor averaging (plan v3 C3/C4, experiment E-C).
+# The obvious repair: does NOT close Channel A (Thm 4.18 — O(r) freedom survives) but
+# DOES bound it (T7 — O(r) is compact). E-C measures whether the bounded displacement
+# still degrades the model.
+name: canonicalized_fedit

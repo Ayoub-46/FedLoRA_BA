@@ -1,0 +1,65 @@
+# CLIP ViT-B/32 — the VISION spine, scored by top-1 accuracy over 10 land-cover classes.
+#
+# `openai/clip-vit-base-patch32` and nothing adjacent: the frozen classifier is built from
+# THIS checkpoint's text tower and scored under THIS checkpoint's normalisation, so the
+# model id and the image-processor id are the same string by necessity, not by convention.
+#
+# ~151M params. Vision tower 12 layers, hidden 768, 12 heads, patch 32, 224x224 input
+# (49 patches + 1 CLS). Text tower 12 layers, hidden 512. Shared projection dim 512.
+#
+# `CLIPModel`, NOT `CLIPVisionModel`: the head lives in the shared projection space, so the
+# visual projection is on the scoring path and must be the checkpoint's own.
+#
+# --- lora_target_scope is MANDATORY, and it is the load-bearing line in this file -------
+# The two towers use IDENTICAL leaf names:
+#     vision_model.encoder.layers.{0..11}.self_attn.{q_proj,k_proj,v_proj,out_proj}
+#     vision_model.encoder.layers.{0..11}.mlp.{fc1,fc2}
+#     text_model.encoder.layers.{0..11}.self_attn.{q_proj,k_proj,v_proj,out_proj}
+# PEFT matches a plain target list by leaf SUFFIX, so an unscoped list adapts the TEXT
+# tower too — which makes the frozen zero-shot head trainable through the tower that
+# produced it, while every direct "is the head frozen?" check still passes. With a scope
+# set, the targets are compiled to a full-dotted-path regex and the result is ASSERTED:
+# exactly 12 x len(target_modules) adapted modules, zero of them under `text_model`.
+# See models/clip_head.py.
+#
+# Note the leaf names differ from the Qwen spine: `out_proj` not `o_proj`, `fc1`/`fc2` not
+# `gate_proj`/`up_proj`/`down_proj`.
+#
+# MODULE COUNT, against the LLM configs: 24 at [q_proj, v_proj], 72 at all six — versus
+# Qwen2.5-1.5B's 56 and 3B's 72 at their own defaults. All CLIP vision projections are
+# square 768x768 (attention) or 768x3072 / 3072x768 (mlp): no grouped-query attention, so
+# unlike Qwen's non-square v_proj every per-layer dW here is square. Per-layer probes are
+# unaffected either way; a global stacked-layer SVD stays forbidden by CLAUDE.md.
+kind: hf
+model_name: openai/clip-vit-base-patch32
+task: clip_zeroshot_cls
+tokenizer_kind: hf     # CLIPTokenizerFast from the same repo, used ONLY to build the head
+lora_target_scope: vision_model
+image_size: 224        # EuroSAT tiles are natively 64x64 and are bicubic-upsampled to this
+
+# --- the adapter, sized for THIS task rather than inherited ---------------------------
+# NOT the Qwen carryover (r=8, [q_proj, v_proj]) — that pairing is the weakest in common
+# use and reaching for it by default is the mistake this project already made once. r=16
+# over all six vision linears is the standard starting point for CLIP LoRA, and
+# alpha = 2r holds PEFT's alpha/r scaling constant across any future rank sweep.
+# configs/experiment/central_eurosat.yaml restates these as the explicit experimental axis.
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.0
+target_modules: [q_proj, k_proj, v_proj, out_proj, fc1, fc2]
+
+# Frozen base in bf16 — never trained, never probed. The LoRA factors are forced back to
+# fp32 after attachment and asserted (models/lora_wrapper._force_fp32_adapters); bf16
+# factors would put a ~4e-3 relative noise floor straight through sigma_min, which
+# invariant 6 exists to prevent.
+base_dtype: bf16
+amp: bf16
+
+# CLIP's text context length. Used only while embedding the class prompts; there is no
+# sequence for the image path to budget.
+max_length: 77
+
+# No classification head exists to freeze: the classifier is a frozen buffer derived from
+# the text tower, and nothing outside the LoRA factors is trainable. Kept for config-shape
+# parity with the other spines.
+freeze_head: false

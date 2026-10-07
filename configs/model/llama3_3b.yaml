@@ -1,0 +1,39 @@
+# LLaMA-3.2-3B (base) + LoRA — the ALTERNATIVE instruction-tuning spine, kept but NOT
+# the default. configs/model/qwen25_3b.yaml is what e_dolly runs; see
+# docs/dolly_qwen_testbed.md for why.
+#
+# Two costs this config carries and Qwen's does not. It is GATED: accept the licence on
+# the model page and `huggingface-cli login` once, or the download 401s. And it shipped
+# in late September 2024, a month AFTER this project's transformers==4.44.2 pin —
+# official support landed in 4.45. The text-only 3B is a plain LlamaForCausalLM with
+# rope_type "llama3", understood since 4.43, so it may well load; the prefetch job
+# checks rather than assuming. To use it:
+#     MODEL_ID=meta-llama/Llama-3.2-3B sbatch scripts/slurm/prefetch.sbatch
+#     sbatch ... scripts/slurm/e_dolly.sbatch   # with model=llama3_3b in the overrides
+#
+# `target_modules: [q_proj, v_proj]` is the direct analogue of bert_base's [query, value],
+# which is what makes the two testbeds comparable rather than merely both present: 28
+# layers x 2 = 56 adapted modules, each carrying its own independent T_l in the gauge
+# group prod_l GL(r). Note v_proj is 3072 -> 1024 under grouped-query attention, so the
+# per-layer dW is NON-SQUARE and the two modules in a layer have different shapes. Every
+# probe is per-layer and shape-agnostic, so this costs nothing — but a global SVD over
+# stacked layers would be meaningless here, which CLAUDE.md already forbids.
+kind: hf
+model_name: meta-llama/Llama-3.2-3B
+task: causal_lm
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+target_modules: [q_proj, v_proj]
+tokenizer_kind: hf
+
+# Frozen base in bf16: 12 GB -> 6 GB resident, and safe because those weights are never
+# trained and never probed. The LoRA factors are forced back to fp32 after attachment and
+# asserted (models/lora_wrapper._force_fp32_adapters) — bf16 factors would put a ~4e-3
+# relative noise floor straight through sigma_min, which invariant 6 exists to prevent.
+base_dtype: bf16
+amp: bf16
+
+max_length: 512
+max_prompt_tokens: 384   # leaves >=128 tokens of response; see ModelSpec.max_prompt_tokens
+freeze_head: false       # no head exists on a causal LM; kept for config-shape parity

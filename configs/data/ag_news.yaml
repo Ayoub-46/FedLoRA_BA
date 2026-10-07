@@ -1,0 +1,9 @@
+# AG News — the TRANSFER testbed. 4 balanced classes, topic classification.
+# Exists to separate results that are properties of the LoRA parametrisation from results
+# that were properties of SST-2. The majority-class floor drops ~0.55 -> ~0.25, so an
+# availability attack has far more room, and the classifier head is 4-way rather than 2-way.
+# Sizes match sst2.yaml so the two testbeds differ in the TASK, not in the data budget.
+name: ag_news
+num_train: 2000
+num_test: 500
+num_labels: 4

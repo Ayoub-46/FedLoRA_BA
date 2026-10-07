@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fedlora-attacks"
+version = "0.1.0"
+description = "Federated LoRA benchmark starter with pluggable tasks, defenses, and attacks."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Ayoub Bellachia", email = "ay.bellachia@gmail.com" }]
+
+# Pinned, mutually-compatible mid-2024 stack (numpy<2). CPU torch by default;
+# CUDA build is opt-in (see README). Do not float these without re-running the
+# gauge-invariance and aggregation tests.
+dependencies = [
+    "torch==2.4.1",
+    # Paired with torch 2.4.1 and NOT floatable independently: transformers imports
+    # torchvision eagerly from `image_utils`, so a mismatched build takes down
+    # CLIPImageProcessor (and with it the whole EuroSAT path) with an unrelated-looking
+    # `operator torchvision::nms does not exist`. Install it from the SAME index as torch
+    # and into the env, not user site -- every sbatch sets PYTHONNOUSERSITE=1, so a
+    # ~/.local copy is invisible on the cluster whatever a login shell reports:
+    #   pip install --no-deps torchvision==0.19.1 \
+    #     --index-url https://download.pytorch.org/whl/cu124
+    "torchvision==0.19.1",
+    "transformers==4.44.2",
+    "peft==0.12.0",
+    "datasets==2.21.0",
+    "accelerate==0.33.0",
+    "numpy==1.26.4",
+    "scipy==1.13.1",
+    "hydra-core==1.3.2",
+    "omegaconf==2.3.0",
+    # Instruction-tuning generation metrics (Dolly/LLaMA testbed). BLEU is pure-python;
+    # bert-score pulls its own scorer checkpoint (roberta-large) at first use, which is
+    # why the SLURM prefetch job warms the HF cache before the array starts.
+    "sacrebleu==2.4.3",
+    "bert-score==0.3.13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.2",
+    "ruff==0.6.4",
+]
+
+[project.scripts]
+fedlora-run = "fedlora_attacks.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "experiments"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E741"]  # ambiguous names (l, I) — we use math-conventional single letters (A, B, T)
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [".git", "outputs", "results", "multirun", "runs"]
+addopts = "-q"
+markers = ["smoke: end-to-end hermetic smoke test"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]

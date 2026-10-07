@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+
+# Envs
+.venv/
+venv/
+
+# Run artifacts / experiment outputs
+outputs/
+multirun/
+runs/
+wandb/
+mlruns/
+# Analysis products are DERIVED from outputs/ — regenerate with scripts/analyze_benign.py.
+# (tests/fixtures/*.pt is deliberately NOT ignored: the real-update fixture is an input
+# to the in-situ invariance test and must travel with the repo.)
+results/
+# Hydra writes <job>.log to the working directory
+*.log
+
+# HF caches (kept out of the repo; set HF_HOME to control)
+.cache/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

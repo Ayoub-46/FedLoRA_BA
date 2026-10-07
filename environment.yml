@@ -1,0 +1,11 @@
+name: FedRoLA
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      # CPU torch by default (hermetic + CI-friendly). For CUDA, install torch
+      # separately from the pytorch cu121 index, then `pip install -e .`.
+      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - -e .[dev]

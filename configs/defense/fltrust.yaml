@@ -1,0 +1,15 @@
+# FLTrust-DeltaW: clean-root trust bootstrapping on effective LoRA updates.
+#
+# Each client is scored by ReLU(cos(DeltaW_i, DeltaW_root)); its raw contribution is
+# additionally scaled by ||DeltaW_root|| / ||DeltaW_i||. The framework-compatible port
+# then normalizes the resulting non-negative weights to sum exactly to one.
+name: fltrust
+
+# Clean server examples reserved from the TRAIN split and removed from client shards.
+root_size: 100
+root_seed: 0
+root_sampling: stratified  # stratified | uniform
+
+# paper_uniform: equal client prior, as in FLTrust Eq. 4
+# fedavg: multiply by protocol data-size weights before the final unit-sum normalization
+client_weighting: paper_uniform

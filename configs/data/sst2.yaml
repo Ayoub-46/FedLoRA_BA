@@ -1,0 +1,5 @@
+# SST-2 (GLUE). Real runs; downloads on first use. Eval on the validation split.
+name: sst2
+num_train: 2000
+num_test: 500
+num_labels: 2

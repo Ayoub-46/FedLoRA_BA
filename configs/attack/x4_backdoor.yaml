@@ -1,0 +1,8 @@
+# Triggered text classification baseline.
+name: x4_backdoor
+malicious_client_ids: [0]
+attack_start_round: 0
+attack_stop_round: null
+trigger: cf
+target_label: 0
+poison_fraction: 0.5

@@ -1,0 +1,5 @@
+# Hermetic, learnable synthetic text classification (no download). CI/smoke default.
+name: synthetic
+num_train: 512
+num_test: 128
+num_labels: 2

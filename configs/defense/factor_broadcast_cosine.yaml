@@ -1,0 +1,5 @@
+# RQ3: fixed factor-space filter calibrated exclusively on separate honest runs.
+# `threshold` is overridden by the experiment driver with the frozen calibration value.
+name: factor_broadcast_cosine
+threshold: 2.0
+action: reject  # monitor for honest calibration; reject for evaluation

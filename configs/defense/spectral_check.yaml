@@ -1,0 +1,29 @@
+# Spectral outlier test on sigma(dW_i) — the statistic norm_bound, multi_krum and
+# cosdefense are all structurally unable to see. At fixed ||dW||_F the nuclear norm
+# ranges over [||dW||_F, sqrt(r)||dW||_F], i.e. up to r^(1/4) ~= 1.68 in FACTOR MASS at
+# r=8, bought at zero cost in every statistic those three compute.
+#
+# Still dW-measurable, so still exactly as blind to Channel A as the rest — which is the
+# point: the blindness belongs to the family, not to one member's carelessness.
+name: spectral_check
+
+# nuclear_ratio | effective_rank | stable_rank | condition_number | sigma_max
+# nuclear_ratio is the default: scale-free (so it is not a norm bound in disguise) and it
+# is precisely the shaping knob. All of them are logged every round whichever is scored,
+# so looking at another one never needs a re-run.
+statistic: nuclear_ratio
+
+# Robust median/MAD z-score across the round's clients, MAD scaled by 1.4826 so the
+# threshold reads as a standard deviation. Median/MAD rather than mean/std because a
+# coalition inside the population would otherwise move the threshold it is judged by.
+z_threshold: 3.0
+
+# two_sided | high | low. Two-sided by default: flattening the spectrum raises the ratio
+# and concentrating it lowers it, and picking one tail in advance is picking which attack
+# to see.
+direction: two_sided
+
+# false -> network-wide pooled spectrum. true -> score each layer, take the client's
+# worst. Both dW-measurable and therefore both blind; running both stops the result
+# reading as an artifact of pooling.
+per_layer: false

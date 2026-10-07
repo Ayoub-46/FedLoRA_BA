@@ -1,0 +1,18 @@
+# Absolute gauge fixing to a PROJECTOR-estimated consensus frame (plan v3 T9, E-D).
+# With the default mean rule, Channel A is CLOSED: the aggregate is
+# P_U(sum_i q_i dW_i), linear in the updates.
+# This is the escape arm. Its magnitude-sensitive twin is a separate config and is NOT
+# an escape — see consensus_frame_magnitude.yaml and E-I.
+name: consensus_frame
+
+# null uses model.lora_r and exactly preserves the historical implementation. A smaller
+# value projects into a tighter server frame, then zero-pads back to the homogeneous
+# model rank for broadcast. Values above model.lora_r are intentionally rejected.
+server_rank: null
+
+# All rules operate after defense filtering/reweighting and shared-frame projection.
+# Options: mean, median, trimmed_mean, geometric_median.
+coordinate_rule: mean
+trim_fraction: 0.1
+geometric_median_max_iterations: 50
+geometric_median_tolerance: 1.0e-6

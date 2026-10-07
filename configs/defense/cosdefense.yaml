@@ -1,0 +1,18 @@
+# CosDefense: cosine between each client's dW_i and the round's consensus direction.
+# The DIRECTION member of the defence matrix. norm_bound scores magnitude, multi_krum
+# scores pairwise distance; neither asks whether a client is pulling the model elsewhere.
+name: cosdefense
+
+# How the cutoff is set.
+#   median -> tau_t = median_i cos_i - gamma * MAD_i, from the round's own traffic
+#   fixed  -> min_cosine outright (needs the benign cosine scale known in advance;
+#             kept for calibration and for pairings where a moving threshold would
+#             confound the comparison)
+threshold_mode: median
+gamma: 1.5
+min_cosine: 0.0        # fixed mode only
+
+# reject   -> q_i = 0 below the cutoff
+# reweight -> q_i = p_i * max(0, cos_i) / max_j max(0, cos_j), keeping a marginal client
+#             at reduced weight rather than discarding its data outright
+action: reject

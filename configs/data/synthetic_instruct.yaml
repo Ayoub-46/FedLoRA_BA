@@ -1,0 +1,8 @@
+# Hermetic, learnable synthetic INSTRUCTION dataset (no download). The offline stand-in
+# for dolly15k: prompts carry a category's marker words, the response is that category's
+# answer phrase, so perplexity actually falls within a few rounds — a smoke test whose
+# metric never moves cannot distinguish a working pipeline from a broken one.
+name: synthetic_instruct
+num_train: 256
+num_test: 64
+num_labels: 2

@@ -1,0 +1,22 @@
+# RoBERTa-base configuration recovered from the ACL 2025 BANKING77 setup.
+kind: hf
+model_name: FacebookAI/roberta-base
+task: seq_cls
+tokenizer_kind: hf
+max_length: 128
+
+# The paper evaluates ranks 8/4/2/1. Rank 8 is the initial FL+LoRA setting. Its reported
+# 1.99B uploaded parameters imply 72 adapted encoder linears: q/k/v plus all three dense
+# projections in each of 12 layers. Scoping is essential because RoBERTa's classifier also
+# has a leaf called `dense` and is explicitly frozen in the paper.
+lora_r: 8
+lora_alpha: 16          # paper evaluation rule: W_ft = W_0 + (16/r) DeltaW
+lora_dropout: 0.0       # unspecified by the paper; explicit no-dropout deviation
+target_modules: [query, key, value, dense]
+lora_target_scope: roberta.encoder.layer
+expected_lora_layers: 72
+
+# Section 5.1: the pretrained base and classifier are frozen; only LoRA is optimized.
+freeze_head: true
+base_dtype: fp32
+amp: null

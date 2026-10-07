@@ -1,0 +1,16 @@
+# Databricks Dolly-15k — the instruction-tuning testbed.
+#
+# num_labels is the 8 CATEGORIES, which is what the Dirichlet is drawn over. They occupy
+# exactly the role SST-2's sentiment label plays, so dirichlet_partition and the JSD skew
+# index work unchanged and alpha stays comparable across testbeds (the 8-category ceiling
+# is higher than AG News's 4, which is why the analysis layer reports the FRACTION of
+# ceiling rather than raw JSD).
+#
+# Dolly ships as ONE split of ~15k rows: the held-out set is carved deterministically from
+# subsample_seed, disjoint from train by construction. num_train null = use everything
+# that is left, so at N=20 each client holds ~700 examples.
+name: dolly15k
+num_train: null
+num_test: 1000
+num_labels: 8
+subsample_seed: 12345

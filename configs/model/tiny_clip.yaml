@@ -1,0 +1,29 @@
+# Hermetic CLIP spine: a tiny randomly-initialised CLIPModel, no download.
+#
+# Mirrors tiny_qwen's role. What it reproduces from the real spine is the thing that can
+# break silently: BOTH towers carry the same leaf module names (q_proj, v_proj, fc1, ...),
+# so the vision-only LoRA scoping is exercised offline instead of being discovered on the
+# cluster. num_hidden_layers is what the scoping assertion counts against, and both towers
+# get it.
+kind: tiny_clip
+model_name: null
+task: clip_zeroshot_cls
+tokenizer_kind: simple
+lora_target_scope: vision_model
+
+hidden_size: 32
+num_hidden_layers: 2
+num_attention_heads: 2
+intermediate_size: 64
+max_position_embeddings: 64
+image_size: 32
+
+lora_r: 4
+lora_alpha: 8
+lora_dropout: 0.0
+target_modules: [q_proj, v_proj]
+
+base_dtype: fp32
+amp: null
+max_length: 32
+freeze_head: false

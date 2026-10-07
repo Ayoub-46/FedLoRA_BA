@@ -1,0 +1,4 @@
+# Multi-Krum scores distances between clients' effective LoRA updates.
+name: multi_krum
+num_selected: 3    # m: how many clients survive selection
+num_byzantine: 1   # f: assumed adversaries; neighbourhood is n - f - 2 (Krum needs n > 2f+2)

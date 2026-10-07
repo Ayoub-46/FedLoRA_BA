@@ -1,0 +1,2 @@
+# Factor-wise averaging (FedIT/FedAvg-over-LoRA). Inexact: mean(A)@mean(B) != mean(AB).
+name: fedit_naive

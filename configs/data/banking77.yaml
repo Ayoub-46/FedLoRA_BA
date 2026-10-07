@@ -1,0 +1,11 @@
+# BANKING77 official splits from the pinned PolyAI mirror.
+# Full train/test are used: 10,003 / 3,080 examples and 77 intent labels.
+name: banking77
+num_train: null
+num_test: null
+num_labels: 77
+
+# Only used by deliberately reduced smoke runs. Full runs do not shuffle or subsample the
+# official splits, but fixing this seed prevents a smoke cell from changing examples with
+# the experimental seed.
+subsample_seed: 2025

@@ -1,0 +1,49 @@
+# EuroSAT (RGB) — the VISION testbed, scored by top-1 accuracy over 10 land-cover classes.
+#
+# WHY IT EXISTS ALONGSIDE dolly15k AND spider. The two text testbeds fail in opposite
+# directions once an attack is added. Dolly had ~1.7% of benign perplexity headroom and its
+# BLEU sweeps sat inside their own noise floor. Spider fixed the headroom but is DISCRETE:
+# generated SQL either parses and executes or it does not, so an untargeted attack moves
+# execution accuracy from "works" to "emits nothing parseable" with little in between, and
+# the interesting middle of the damage curve is never sampled. Top-1 over 10 classes
+# degrades CONTINUOUSLY toward a known random floor of 0.10, with a large benign gain
+# (zero-shot ~45-50% -> fine-tuned ~96-97%). It is also the modality where the
+# Byzantine-robust FL baselines (Krum, Trimmed-Mean, Bulyan, ALIE, IPM) are conventionally
+# benchmarked, so the numbers are comparable to that literature in a way Spider's are not.
+#
+# THE MIRROR IS PART OF THE RESULT. `timm/eurosat-rgb` derives its 16200/5400/5400 splits
+# from the google-research remote_sensing_representations definitions — the split the
+# remote-sensing transfer literature reports on. EuroSAT ships no official splits, so every
+# other Hub mirror carves its own (or ships one 27k blob, or 13-band uint16 that CLIP's
+# 3-channel processor cannot read). Swapping one in produces a plausible, non-comparable
+# number; data/eurosat.verify_splits checks the split sizes and the label vocabulary before
+# anything trains. See the module docstring for the seven rejected near-duplicates.
+#
+# THE HELD-OUT SET IS `test`. `validation` (5400) is reserved for learning-rate selection
+# and is not even loaded. Never report on it.
+#
+# num_labels is PINNED to 10 for the same reason sst2 pins 2: it is a property of the
+# dataset, not of the config. Here it also sizes the frozen zero-shot head, so a config
+# that disagreed would build a classifier of the wrong width.
+#
+# The label slot holds the land-cover class, and label_names[label] recovers the stored
+# CamelCase name. That is the natural non-IID axis for a future federated arm — Dirichlet
+# over the 10 labels, alpha in {0.1, 0.5, 100} — but with only 10 classes and 20+ clients
+# alpha=0.1 gives many clients 1-2 classes, so such a run must report the REALIZED
+# per-client class histograms rather than just quoting alpha. Nothing federated is wired
+# here.
+#
+# num_train / num_test null = the FULL splits: 16200 training images, the whole 5400-image
+# test split scored every round (one forward pass, seconds on an A6000).
+name: eurosat
+num_train: null
+num_test: null
+num_labels: 10
+subsample_seed: 12345
+
+# WHICH SPLIT FILLS THE HELD-OUT SLOT. `test` is the reportable one and the default.
+# `validation` is for anything that SELECTS a setting — learning rate, rank, the per-round
+# budget. The two are the same size and the same shape, so nothing downstream could tell
+# them apart; the choice is recorded in summary.json (`data_heldout_split`) precisely so a
+# tuning number can never be quoted as a result. Only the chosen split is preprocessed.
+heldout_split: test

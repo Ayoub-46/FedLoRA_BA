@@ -1,0 +1,11 @@
+# The MAGNITUDE-sensitive frame estimator (plan v3 T9, experiment E-I). NOT an escape.
+# top-r subspace of sum_i A_i A_i^T is gauge-variant: an attacker with T^-1 = c*I leaves
+# every dW_i untouched, inflates its A_i, and tilts the consensus subspace toward the
+# coalition. Channel A does not disappear under absolute gauge fixing — it relocates
+# into the frame estimator. Run against consensus_frame.yaml; never merge the two arms.
+name: consensus_frame_magnitude
+server_rank: null
+coordinate_rule: mean
+trim_fraction: 0.1
+geometric_median_max_iterations: 50
+geometric_median_tolerance: 1.0e-6

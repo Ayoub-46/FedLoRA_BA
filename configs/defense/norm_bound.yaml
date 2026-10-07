@@ -1,0 +1,22 @@
+# dW-norm bound: q_i = p_i * min(1, C / ||dW_i||_F). The named deployed defence plan
+# v3's C2 is a claim about — the bound is on a quantity the gauge provably fixes, so
+# Channel A's reach is unbounded while every client passes.
+name: norm_bound
+
+# How C is chosen.
+#   median -> C_t = gamma * median_i ||dW_i||_F, set from the round's own traffic (a
+#             deployed system's behaviour, and the only choice that does not need the
+#             ||dW|| scale of the model/rank/lr known in advance).
+#   fixed  -> C = max_delta_norm, an absolute constant.
+# The sharper form of C2: an adaptive threshold is normally HARDER to evade, but both
+# channels leave ||dW_i||_F untouched, so C_t adapts to exactly the same value under
+# attack as under benign traffic. The defence recalibrates into the same blindness.
+threshold_mode: median
+gamma: 1.5
+max_delta_norm: 1.0   # fixed mode only
+
+# false -> network-wide sqrt(sum_l ||dW_l||_F^2) (the C2 quantity, default).
+# true  -> bound each layer separately, clipping by the most-violating layer. Both are
+# dW-measurable and therefore both blind; E-B runs both, so the result cannot be read as
+# an artifact of summing over layers.
+per_layer: false

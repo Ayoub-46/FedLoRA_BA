@@ -1,0 +1,2 @@
+# Exact mean of effective updates: dW_agg = mean(A_i @ B_i). The gauge-invariant target.
+name: exact_deltaw

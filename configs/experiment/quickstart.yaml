@@ -1,0 +1,21 @@
+# @package _global_
+defaults:
+  - override /attack: x4_backdoor
+  - override /aggregation: fedit_naive
+
+experiment_name: quickstart
+seed: 0
+fl:
+  num_clients: 4
+  num_rounds: 3
+  alpha: inf
+  local_epochs: 1
+  local_steps: 2
+  lr: 0.005
+  batch_size: 8
+data:
+  num_train: 128
+  num_test: 48
+attack:
+  malicious_client_ids: [0]
+  poison_fraction: 0.5

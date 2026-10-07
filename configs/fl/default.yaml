@@ -1,0 +1,17 @@
+num_clients: 5
+alpha: 0.5          # Dirichlet non-IID concentration (0.1 / 0.5 / inf per plan §3)
+num_rounds: 8
+local_epochs: 2
+# Fixed optimizer steps per client per round; overrides local_epochs when set.
+# Preferred for heterogeneity sweeps: under local_epochs a client's step count (and so
+# its ||dW||) scales with its shard size, which would masquerade as a heterogeneity
+# effect in the geometry. null -> use local_epochs.
+local_steps: null
+# Conservative default sized for REAL models (bert-base + LoRA: ~1e-4..5e-4).
+# The tiny/synthetic experiments (smoke) override this to 5e-3 themselves.
+# Defaulting low is deliberate: too-high lr silently destroys a real run, whereas
+# too-low merely converges slowly.
+lr: 0.0002
+batch_size: 16
+weight_decay: 0.0
+clients_per_round: null   # null -> all clients each round

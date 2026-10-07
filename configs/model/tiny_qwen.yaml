@@ -1,0 +1,26 @@
+# Randomly-initialized tiny Qwen2 — hermetic (no download), for CI/smoke/unit tests of
+# the CAUSAL-LM path. The offline stand-in for llama3_3b.
+#
+# num_key_value_heads is derived as num_attention_heads // 2 in the builder, so this
+# fixture uses GROUPED-QUERY ATTENTION exactly as the 3B does and `v_proj` is NON-SQUARE. Qwen2 also biases q_proj/v_proj,
+# which Llama does not — the bias stays frozen and outside the LoRA bundle, and
+# tests/test_dolly_causal.py pins that rather than assuming it.
+# A square-only tiny model would let a shape bug through and surface it on the cluster.
+kind: tiny_qwen
+model_name: null
+task: causal_lm
+hidden_size: 32
+num_hidden_layers: 2
+num_attention_heads: 4
+intermediate_size: 64
+max_position_embeddings: 128
+lora_r: 4
+lora_alpha: 8
+lora_dropout: 0.0
+target_modules: [q_proj, v_proj]
+tokenizer_kind: simple
+base_dtype: fp32
+amp: null
+max_length: 24
+max_prompt_tokens: 16
+freeze_head: false

@@ -1,0 +1,36 @@
+defaults:
+  - _self_
+  - model: tiny_bert
+  - data: synthetic
+  - fl: default
+  - aggregation: fedit_naive
+  - defense: none
+  - attack: none
+  - experiment: default
+
+seed: 0
+device: cpu
+output_dir: outputs
+experiment_name: run
+eval_batch_size: 64
+torch_num_threads: 4
+
+# Optional diagnostics and snapshots. Empty probes keep the starter run cheap.
+probes: []
+persist_canonical_frames: false
+persist_client_factors: false
+persist_client_factors_rounds: null
+probe_coalition_ids: null
+
+# Used by causal language model tasks; ignored by classification tasks.
+generation_every: 5
+generation_prompts: 150
+generation_max_new_tokens: 128
+bertscore_model: roberta-large
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

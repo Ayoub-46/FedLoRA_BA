@@ -1,0 +1,40 @@
+# Spider — the text-to-SQL testbed, scored by EXECUTION accuracy.
+#
+# Why this exists alongside dolly15k: Qwen2.5-3B already models Dolly-style prose at
+# held-out perplexity ~5.9 cold, so tuning there moves the metric ~1.7% and what movement
+# there is proved to be calibration rather than capability (BLEU held flat while perplexity
+# degraded). Execution accuracy is hard, binary and semantically grounded — the SQL either
+# returns the gold rows or it does not — so there is something real for an attack to
+# destroy, which is the point of a benign reference.
+#
+# num_labels is the DATABASE COUNT, derived at load time from tables.json rather than fixed
+# here, because Spider's database vocabulary is a property of the distribution. The value
+# below is a DOCUMENTATION AID ONLY — data/base.py takes the real one from the data.
+#
+# The label slot holds the db_id index: it is what the executor needs per example, and it is
+# a database-valued axis a federated arm can partition over. NOTE it does not by itself
+# give "each client owns different databases": a Dirichlet over 140 databases comes out
+# only mildly non-IID (measured: every client sees ~82 of them, none held exclusively).
+# See src/fedlora_attacks/data/spider.py.
+#
+# The vocabulary is built from tables.json (~166 entries) rather than from the observed
+# rows, so label indices stay stable no matter which split is loaded — a partition over
+# db_id needs the full vocabulary, not the subset one split happens to exercise.
+#
+# CROSS-DOMAIN, and this is the point of Spider: the 140 training databases and the 20
+# validation databases are DISJOINT (verified against xlangai/spider). The model cannot
+# memorise a schema during training and meet it again at evaluation — it has to READ the
+# schema out of the prompt. That is what makes the prompt's schema budget load-bearing on
+# execution accuracy rather than a formatting detail, and why the schema truncation rate is
+# reported in every run summary. The remaining ~6 databases in tables.json belong to
+# Spider's held-out test split: schemas ship, questions do not.
+#
+# Spider ships its own disjoint train/validation splits, so unlike Dolly nothing is carved
+# here. num_test null = the FULL 1034-example validation set, which is the standard dev set
+# every published Spider number is reported on; using a subset would make our execution
+# accuracy incomparable to the literature for no gain.
+name: spider
+num_train: null
+num_test: null
+num_labels: 166
+subsample_seed: 12345

@@ -1,0 +1,12 @@
+# Real-run model: bert-base-uncased (downloads once). Plan §3 primary encoder.
+kind: hf
+model_name: bert-base-uncased
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+target_modules: [query, value]
+tokenizer_kind: hf
+max_length: 128
+# Freeze the classification head: never trained, never federated. ABLATION ONLY
+# (experiment/e_a_frozen_head) — isolates adapter effects from head instability.
+freeze_head: false

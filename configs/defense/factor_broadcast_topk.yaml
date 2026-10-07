@@ -1,0 +1,9 @@
+# In-round RQ3 filter: no calibration data or fixed threshold.
+name: factor_broadcast_topk
+score_mode: cosine  # cosine | euclidean
+num_reject: 2
+tie_break_seed: 0  # overridden with the run seed by the experiment driver
+
+# Euclidean mode computes per-block RMS displacement, divides each block by its
+# cross-client median RMS, then averages A/B and all adapted modules equally.
+euclidean_epsilon: 1.0e-12

@@ -1,0 +1,39 @@
+# Qwen2.5-1.5B (base) — the smaller instruction-tuning spine.
+#
+# UNGATED, and `Qwen2ForCausalLM` has been supported since transformers 4.37, comfortably
+# inside this project's 4.44.2 pin. Verified base, not Instruct: `eos_token_id` is 151643
+# (<|endoftext|>) where the Instruct variant uses 151645 (<|im_end|>).
+#
+# 28 layers against the 3B's 36, hidden 1536, 12 attention heads and only 2 KV heads. That
+# grouped-query attention makes `v_proj` 1536 -> 256, so the per-layer dW is NON-SQUARE and
+# the modules within a layer have different shapes. Every probe here is per-layer and
+# shape-agnostic, so this costs nothing — but a global SVD over stacked layers would be
+# meaningless, which CLAUDE.md already forbids.
+#
+# `tie_word_embeddings: true` on this checkpoint, unlike the 3B. Irrelevant to LoRA on the
+# attention/MLP projections, which never touch the embedding matrices.
+#
+# The lora_r / target_modules below are TASK-NEUTRAL DEFAULTS, matching the 3B so the two
+# spines are comparable out of the box. Experiments that treat the adapter as an axis
+# override them: configs/experiment/central_spider.yaml uses all-linear at r=16, because
+# q/v-only at r=8 is the weakest config in common use and text-to-SQL asks for a
+# distribution far from pretraining prose.
+kind: hf
+model_name: Qwen/Qwen2.5-1.5B
+task: causal_lm
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+target_modules: [q_proj, v_proj]
+tokenizer_kind: hf
+
+# Frozen base in bf16, and safe because those weights are never trained and never probed.
+# The LoRA factors are forced back to fp32 after attachment and asserted
+# (models/lora_wrapper._force_fp32_adapters) — bf16 factors would put a ~4e-3 relative
+# noise floor straight through sigma_min, which invariant 6 exists to prevent.
+base_dtype: bf16
+amp: bf16
+
+max_length: 512
+max_prompt_tokens: 384
+freeze_head: false       # no head exists on a causal LM; kept for config-shape parity

@@ -1,0 +1,17 @@
+# Randomly-initialized tiny BERT — hermetic (no download), for CI/smoke/unit tests.
+kind: tiny_bert
+model_name: null
+hidden_size: 96
+num_hidden_layers: 2
+num_attention_heads: 3
+intermediate_size: 192
+max_position_embeddings: 64
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.0
+target_modules: [query, value]
+tokenizer_kind: simple
+max_length: 32
+# Freeze the classification head: never trained, never federated. ABLATION ONLY
+# (experiment/e_a_frozen_head) — isolates adapter effects from head instability.
+freeze_head: false
