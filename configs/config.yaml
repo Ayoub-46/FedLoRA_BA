@@ -11,8 +11,10 @@ defaults:
 seed: 0
 device: cpu
 output_dir: outputs
+initial_checkpoint: null
 experiment_name: run
 eval_batch_size: 64
+evaluation_split: test
 torch_num_threads: 4
 
 # Optional diagnostics and snapshots. Empty probes keep the starter run cheap.
@@ -20,6 +22,7 @@ probes: []
 persist_canonical_frames: false
 persist_client_factors: false
 persist_client_factors_rounds: null
+persist_global_at_rounds: []
 probe_coalition_ids: null
 
 # Used by causal language model tasks; ignored by classification tasks.

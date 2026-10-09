@@ -23,7 +23,7 @@ import torch
 from ..attacks.base import Attack
 from ..data.base import TextClassificationData
 from ..defenses.base import Defense, DefenseContext
-from ..metrics.evaluation import accuracy, attack_success_rate
+from ..metrics.evaluation import accuracy, attack_success_rate, backdoor_classification_metrics
 from ..metrics.generation import response_perplexity
 from ..metrics.outcome import outcome_metrics
 from ..metrics.persistence import PersistenceCurve
@@ -37,6 +37,7 @@ from .aggregation.base import (
     normalized_weights,
 )
 from .client import LoRAClient
+from .checkpoint import save_global_checkpoint
 from .types import AggregateResult, GlobalState
 
 log = get_logger()
@@ -60,6 +61,10 @@ def aggregate_or_retain(aggregation, updates, weights, broadcast):
 @dataclass
 class ServerConfig:
     num_rounds: int = 10
+    start_round: int = 0
+    """Absolute round index of the first round, for checkpoint continuation."""
+    evaluation_split: str = "test"
+    """Which clean text split supplies per-round accuracy and ASR."""
     clients_per_round: int | None = None  # None -> all clients each round
     eval_batch_size: int = 64
     eval_examples: int | None = None
@@ -132,21 +137,43 @@ class ServerConfig:
     without retaining every preceding round. The separate filename and round-keyed schema
     keep the longstanding prefix checkpoint contract unambiguous.
     """
+    persist_global_at_rounds: tuple[int, ...] = ()
+    """Zero-based rounds whose evaluated post-aggregation global state is checkpointed."""
+    checkpoint_context: dict | None = None
 
     def __post_init__(self) -> None:
+        if self.num_rounds < 1 or self.start_round < 0:
+            raise ValueError("num_rounds must be positive and start_round non-negative")
+        if self.evaluation_split not in ("test", "validation"):
+            raise ValueError("evaluation_split must be 'test' or 'validation'")
         rounds = tuple(int(round_idx) for round_idx in self.persist_client_factors_at_rounds)
         if len(rounds) != len(set(rounds)):
             raise ValueError("persist_client_factors_at_rounds contains duplicate rounds")
-        if any(round_idx < 0 or round_idx >= self.num_rounds for round_idx in rounds):
+        if any(
+            round_idx < self.start_round or round_idx >= self.start_round + self.num_rounds
+            for round_idx in rounds
+        ):
             raise ValueError(
                 "persist_client_factors_at_rounds must contain zero-based indices in "
-                f"[0, {self.num_rounds})"
+                f"[{self.start_round}, {self.start_round + self.num_rounds})"
             )
         if rounds and not self.persist_client_factors:
             raise ValueError(
                 "persist_client_factors_at_rounds requires persist_client_factors=true"
             )
         self.persist_client_factors_at_rounds = tuple(sorted(rounds))
+        global_rounds = tuple(int(round_idx) for round_idx in self.persist_global_at_rounds)
+        if len(global_rounds) != len(set(global_rounds)):
+            raise ValueError("persist_global_at_rounds contains duplicate rounds")
+        if any(
+            round_idx < self.start_round or round_idx >= self.start_round + self.num_rounds
+            for round_idx in global_rounds
+        ):
+            raise ValueError(
+                "persist_global_at_rounds must contain zero-based indices in "
+                f"[{self.start_round}, {self.start_round + self.num_rounds})"
+            )
+        self.persist_global_at_rounds = tuple(sorted(global_rounds))
 
 
 def nonfinite_clients(updates) -> list[int]:
@@ -272,10 +299,18 @@ class FederatedServer:
         data: TextClassificationData,
         attack: Attack,
         seed: int = 0,
+        initial_adapters=None,
+        initial_head=None,
     ) -> RunResult:
         rng = np.random.default_rng(seed)
-        global_adapters = self.model.get_adapters()  # zero-dW LoRA init
-        global_head = self.model.get_head_state()  # federated classifier head
+        global_adapters = (
+            initial_adapters if initial_adapters is not None else self.model.get_adapters()
+        )
+        global_head = initial_head if initial_head is not None else self.model.get_head_state()
+        # Preserve the original client-selection stream when resuming from round T.
+        # _select consumes a choice only when clients_per_round selects a proper subset.
+        for _ in range(self.cfg.start_round):
+            self._select(clients, 0, rng)
         prev_aggregate: AggregateResult | None = None
 
         rounds, acc_series, asr_series, per_round = [], [], [], []
@@ -288,7 +323,7 @@ class FederatedServer:
         client_factor_history: list[dict] = []
         client_factor_snapshots: dict[int, dict] = {}
         prev_updates: list | None = None
-        for r in range(self.cfg.num_rounds):
+        for r in range(self.cfg.start_round, self.cfg.start_round + self.cfg.num_rounds):
             selected = self._select(clients, r, rng)
             # Per-client isolated RNG, deterministic in (seed, round, client_id) for BOTH
             # numpy (data order / poisoning) AND torch (dropout). This is what makes E2's
@@ -425,6 +460,7 @@ class FederatedServer:
             causal = getattr(data, "test_responses", None) is not None
             image = getattr(data, "modality", "text") == "image"
             task_metrics: dict[str, float] = {}
+            validation_metrics = None
             if image:
                 # THE SAME `evaluate_images` central/baseline.py calls, imported rather
                 # than reimplemented, so top1_accuracy means bit-for-bit what it means
@@ -466,7 +502,7 @@ class FederatedServer:
                 )
                 if train_losses:
                     task_metrics["train_loss"] = float(sum(train_losses) / len(train_losses))
-                last_round = r == self.cfg.num_rounds - 1
+                last_round = r == self.cfg.start_round + self.cfg.num_rounds - 1
                 if self.cfg.generation_every > 0 and (
                     last_round or r % self.cfg.generation_every == 0
                 ):
@@ -492,17 +528,43 @@ class FederatedServer:
                     task_metrics.update({k: v for k, v in gen.items() if v is not None})
                     task_metrics["generation_sample"] = float(n)
             else:
-                acc = accuracy(
+                if self.cfg.evaluation_split == "validation":
+                    if data.validation_texts is None or data.validation_labels is None:
+                        raise ValueError("validation evaluation requested without a validation split")
+                    eval_texts, eval_labels = data.validation_texts, data.validation_labels
+                else:
+                    eval_texts, eval_labels = data.test_texts, data.test_labels
+                if self.cfg.evaluation_split == "validation":
+                    # One pass supplies all validation metrics, including clean loss.
+                    # BERT evaluation is material at every federated round.
+                    validation_metrics = backdoor_classification_metrics(
+                        self.model, eval_texts, eval_labels, attack,
+                        self.device, self.cfg.eval_batch_size,
+                    )
+                    acc = validation_metrics["clean_accuracy"]
+                    asr = validation_metrics["asr"]
+                else:
+                    acc = accuracy(
+                        self.model,
+                        eval_texts,
+                        eval_labels,
+                        self.device,
+                        self.cfg.eval_batch_size,
+                    )
+                    asr = attack_success_rate(
+                        self.model,
+                        eval_texts,
+                        eval_labels,
+                        attack,
+                        self.device,
+                        self.cfg.eval_batch_size,
+                    )
+
+            if validation_metrics is None and data.validation_texts is not None and data.validation_labels is not None:
+                validation_metrics = backdoor_classification_metrics(
                     self.model,
-                    data.test_texts,
-                    data.test_labels,
-                    self.device,
-                    self.cfg.eval_batch_size,
-                )
-                asr = attack_success_rate(
-                    self.model,
-                    data.test_texts,
-                    data.test_labels,
+                    data.validation_texts,
+                    data.validation_labels,
                     attack,
                     self.device,
                     self.cfg.eval_batch_size,
@@ -512,6 +574,8 @@ class FederatedServer:
                 "round": r,
                 "accuracy": acc,
                 "asr": asr,
+                "evaluation_split": self.cfg.evaluation_split,
+                "validation": validation_metrics,
                 **task_metrics,
                 "num_clients": len(selected),
                 "num_active_attackers": sum(1 for u in updates if u.metadata.get("active")),
@@ -547,6 +611,14 @@ class FederatedServer:
                 torch.cuda.reset_peak_memory_stats()
             if self.logger is not None:
                 self.logger.log(record)
+                if r in self.cfg.persist_global_at_rounds:
+                    save_global_checkpoint(
+                        self.logger.run_dir / "checkpoints" / f"global_round_{r:04d}.pt",
+                        round_idx=r,
+                        adapters=aggregate.next_global,
+                        head_state=self.model.get_head_state(),
+                        context=self.cfg.checkpoint_context,
+                    )
             if causal:
                 log.info(
                     "round %d | ppl=%.4f | loss=%.4f | disc=%.3e",

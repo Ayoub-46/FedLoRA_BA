@@ -96,6 +96,11 @@ class TaskData:
     shared field list while still making it impossible to lose between the loader and the
     run summary.
     """
+    server_clean_texts: list[str] | None = None
+    server_clean_labels: list[int] | None = None
+    validation_texts: list[str] | None = None
+    validation_labels: list[int] | None = None
+    """Disjoint clean subsets reserved before federated client partitioning."""
 
     @property
     def is_causal_lm(self) -> bool:
@@ -190,6 +195,8 @@ def build_dataset(
     subsample_seed: int | None = None,
     max_prompt_tokens: int | None = None,
     heldout_split: str = "test",
+    server_clean_size: int = 0,
+    validation_size: int = 0,
 ) -> TaskData:
     """Build the standardized splits.
 
@@ -237,8 +244,29 @@ def build_dataset(
         # num_labels is PINNED to 4 rather than taken from the config, exactly as sst2
         # pins 2: the label count is a property of the dataset, and a config that
         # disagreed would silently build a head with the wrong width.
-        tr_x, tr_y, te_x, te_y = load_ag_news(num_train, num_test, subsample_seed)
-        return TextClassificationData(tr_x, tr_y, te_x, te_y, num_labels=4, vocab=None)
+        if server_clean_size < 0 or validation_size < 0:
+            raise ValueError("reserved clean split sizes must be non-negative")
+        reserve = server_clean_size + validation_size
+        requested = None if num_train is None else num_train + reserve
+        tr_x, tr_y, te_x, te_y = load_ag_news(requested, num_test, subsample_seed)
+        if reserve >= len(tr_x) and reserve:
+            raise ValueError("reserved clean splits must leave AG News client examples")
+        server_x = tr_x[:server_clean_size] if server_clean_size else None
+        server_y = tr_y[:server_clean_size] if server_clean_size else None
+        val_x = tr_x[server_clean_size:reserve] if validation_size else None
+        val_y = tr_y[server_clean_size:reserve] if validation_size else None
+        if reserve:
+            tr_x, tr_y = tr_x[reserve:], tr_y[reserve:]
+        return TextClassificationData(
+            tr_x, tr_y, te_x, te_y, num_labels=4, vocab=None,
+            server_clean_texts=server_x, server_clean_labels=server_y,
+            validation_texts=val_x, validation_labels=val_y,
+            info={
+                "server_clean_size": server_clean_size,
+                "validation_size": validation_size,
+                "heldout_split": "test",
+            },
+        )
     if name == "banking77":
         # The label count and names belong to the pinned dataset, not the config.  Keeping
         # the official test split global matches this framework's Spider/EuroSAT metric
@@ -345,6 +373,8 @@ def build_federated_data(
     subsample_seed: int | None = None,
     max_prompt_tokens: int | None = None,
     partition_scheme: str = "dirichlet",
+    server_clean_size: int = 0,
+    validation_size: int = 0,
 ) -> FederatedData:
     """Build the splits and the client partition.
 
@@ -359,7 +389,8 @@ def build_federated_data(
       the realistic federation; the Dirichlet is not (see data/partition.py).
     """
     data = build_dataset(
-        name, num_train, num_test, seed, num_labels, subsample_seed, max_prompt_tokens
+        name, num_train, num_test, seed, num_labels, subsample_seed, max_prompt_tokens,
+        server_clean_size=server_clean_size, validation_size=validation_size,
     )
     if partition_scheme == "disjoint_labels":
         partition = disjoint_label_partition(data.train_labels, num_clients, seed)

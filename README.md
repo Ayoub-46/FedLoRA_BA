@@ -75,3 +75,46 @@ access. The synthetic quickstart needs neither.
 The included text ASR is the fraction of **non-target** held-out examples classified
 as the target after trigger insertion. The backdoor baseline does not yet poison images
 or instruction responses. Runs on those tasks reject this attack explicitly.
+
+## AG News recovery connectivity study
+
+The AG News preset reserves 500 clean articles for server-side path fitting and 500
+disjoint articles for validation before the remaining 2,000 articles are partitioned
+among clients. The official labelled test split is used only for final path reporting.
+The first attack is a `cf` prefix targeting class 0. It **replaces** selected non-target
+examples, so the malicious shard size and aggregation weight stay fixed. This differs
+from the older X4 append baseline, which remains available as `attack.poison_mode=append`.
+
+```bash
+python experiments/ag_news_recovery.py
+python experiments/recovery_connectivity.py outputs/ag_news_recovery/<study_id>/pair.json
+```
+
+The first command trains matched clean and poisoned federated arms, saves their
+post-aggregation global LoRA factors and classifier head at the final attack round,
+and reports the observed ASR gain and clean-accuracy loss against the clean twin at
+every attack round.
+It then continues the poisoned model with clean-only federated training for up to
+20 rounds. It selects the first recovered checkpoint whose validation ASR is no
+higher than the clean twin's and whose validation accuracy is within two percentage
+points. There is no attack-strength gate; inspect the reported attack effect before
+interpreting a pair as backdoor recovery.
+The attack trajectory is a pilot measurement, not a claim that an arbitrary ASR
+gain is meaningful. Choose any later attack-strength criterion from pilot runs,
+then fix it before comparing paths across fresh seeds.
+If no checkpoint qualifies, `pair.json` records `no_eligible_recovery` and the path
+command rejects that pair. The run uses CUDA when available and otherwise CPU.
+
+The second command searches paths at rank `r`, rank `2r`, and with all frozen base
+parameters allowed to bend. The classifier head follows the same linear interpolation
+in every condition. It fits paths only on the reserved server-clean set, selects the
+best candidate in each condition by validation clean-loss maximum, and reports dense
+test curves of clean cross-entropy, accuracy, ASR, and triggered correctness. The
+triggered metrics use articles whose original label is not class 0; the report also
+includes triggered correctness conditioned on the clean prediction being correct. The
+sampled `H_0` merge events in `connectivity/report.json` are estimates over evaluated
+paths; an unsuccessful search is not evidence of disconnected low-loss regions.
+
+Global checkpoints include a JSON sidecar with the model/data configuration, seed,
+partition digest, and frozen-base fingerprint. The continuation loader rejects a
+checkpoint whose static context does not match its run.

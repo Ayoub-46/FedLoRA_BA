@@ -1,14 +1,13 @@
-"""X4 baseline: trigger-based text backdoor (BadNets-style). END-TO-END.
+"""X4 trigger-based text backdoor with append and in-place replacement modes.
 
-A configurable trigger token is inserted and the label flipped to a target class on
-a fraction of a malicious client's local data (clean data retained, poisoned copies
-appended). ASR is measured by inserting the trigger into clean test inputs and
-checking the model predicts the target label. Serves as the persistence reference
-(plan §3, X4) that E2's low-rank steering is compared against.
+ASR is measured by triggering held-out non-target inputs and counting target
+predictions. Append remains the baseline default; replacement preserves client
+shard size for paired recovery experiments.
 """
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 
 from .base import ATTACKS, AttackConfig, BaseAttack
@@ -20,6 +19,7 @@ class X4Config(AttackConfig):
     trigger: str = "cf"
     target_label: int = 0
     poison_fraction: float = 0.5
+    poison_mode: str = "append"
 
 
 @ATTACKS.register("x4_backdoor")
@@ -32,6 +32,8 @@ class X4BackdoorAttack(BaseAttack):
             raise ValueError("poison_fraction must be in [0, 1]")
         if not config.trigger.strip():
             raise ValueError("trigger must be non-empty")
+        if config.poison_mode not in ("append", "replace"):
+            raise ValueError("poison_mode must be 'append' or 'replace'")
         self.cfg: X4Config = config
 
     def apply_trigger(self, text: str) -> str:
@@ -49,6 +51,18 @@ class X4BackdoorAttack(BaseAttack):
             return texts, labels
         texts = list(texts)
         labels = list(labels)
+        if self.cfg.poison_mode == "replace":
+            candidates = [i for i, label in enumerate(labels) if label != self.cfg.target_label]
+            k = int(self.cfg.poison_fraction * len(candidates))
+            if k <= 0:
+                return texts, labels
+            # Keep the optimizer's later minibatch shuffle stream identical in the
+            # clean and poisoned arms. Only the article content and label differ.
+            selected = copy.deepcopy(rng).choice(candidates, size=k, replace=False)
+            for i in selected:
+                texts[int(i)] = self.apply_trigger(texts[int(i)])
+                labels[int(i)] = self.cfg.target_label
+            return texts, labels
         n = len(texts)
         k = int(self.cfg.poison_fraction * n)
         if k <= 0:

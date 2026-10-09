@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import torch
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from .attacks.base import Attack, AttackConfig, build_attack
 from .attacks.x4_backdoor import X4Config
@@ -22,6 +23,12 @@ from .defenses.norm_bound import NormBoundConfig
 from .defenses.spectral_check import SpectralCheckConfig
 from .fl.aggregation.base import Aggregation, build_aggregation
 from .fl.client import ClientConfig, LoRAClient
+from .fl.checkpoint import (
+    frozen_base_sha256,
+    load_global_checkpoint,
+    load_global_checkpoint_context,
+    validate_global_checkpoint,
+)
 from .fl.server import FederatedServer, RunResult, ServerConfig
 from .models.lora_wrapper import CLIP_ZEROSHOT_CLS, ModelSpec, build_lora_model
 from .probes.base import build_probes
@@ -53,6 +60,7 @@ def build_attack_from_cfg(a: DictConfig) -> Attack:
             trigger=a.trigger,
             target_label=a.target_label,
             poison_fraction=a.poison_fraction,
+            poison_mode=str(a.get("poison_mode", "append")),
         )
     else:
         raise KeyError(f"unknown attack '{a.name}'")
@@ -189,6 +197,9 @@ def run_experiment(cfg: DictConfig, experiment_name: str = "run") -> RunResult:
     seed = int(cfg.seed)
     seed_everything(seed)
     device = cfg.get("device", "cpu")
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        cfg.device = device
 
     # Torch's default intra-op thread count (~#cores) badly over-subscribes the small
     # per-layer ops of a tiny model; cap it (see configs/config.yaml).
@@ -221,6 +232,8 @@ def run_experiment(cfg: DictConfig, experiment_name: str = "run") -> RunResult:
         # the shared defaults would change the resolved config of EVERY experiment and so
         # every config hash, orphaning every completed run on disk.
         partition_scheme=str(cfg.fl.get("partition", "dirichlet")),
+        server_clean_size=int(cfg.data.get("server_clean_size", 0)),
+        validation_size=int(cfg.data.get("validation_size", 0)),
     )
 
     if cfg.attack.name == "x4_backdoor" and fed.data.task != "seq_cls":
@@ -282,6 +295,34 @@ def run_experiment(cfg: DictConfig, experiment_name: str = "run") -> RunResult:
             f"model target scope produced {model.num_lora_layers()} LoRA layers; "
             f"the configuration requires {int(expected_lora_layers)}"
         )
+    initial_adapters = None
+    initial_head = None
+    start_round = 0
+    source_checkpoint = cfg.get("initial_checkpoint", None)
+    if source_checkpoint:
+        saved_round, initial_adapters, initial_head = load_global_checkpoint(source_checkpoint)
+        validate_global_checkpoint(model, initial_adapters, initial_head)
+        start_round = saved_round + 1
+
+    data_signature = hashlib.sha256(
+        json.dumps(
+            {"texts": fed.data.train_texts, "labels": fed.data.train_labels,
+             "clients": fed.partition.client_indices},
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    checkpoint_context = {
+        "seed": seed,
+        "model": OmegaConf.to_container(cfg.model, resolve=True),
+        "data": OmegaConf.to_container(cfg.data, resolve=True),
+        "clients_per_round": cfg.fl.get("clients_per_round", None),
+        "partition_sha256": data_signature,
+        "frozen_base_sha256": frozen_base_sha256(model),
+    }
+    if source_checkpoint:
+        source_context = load_global_checkpoint_context(source_checkpoint)
+        if source_context != checkpoint_context:
+            raise ValueError("checkpoint model, data, seed, or client partition differs from run")
 
     # -- clients ----------------------------------------------------------
     ccfg = ClientConfig(
@@ -327,6 +368,8 @@ def run_experiment(cfg: DictConfig, experiment_name: str = "run") -> RunResult:
     probes = build_probes(list(cfg.probes))
     scfg = ServerConfig(
         num_rounds=cfg.fl.num_rounds,
+        start_round=start_round,
+        evaluation_split=str(cfg.get("evaluation_split", "test")),
         clients_per_round=cfg.fl.get("clients_per_round", None),
         eval_batch_size=cfg.get("eval_batch_size", 64),
         eval_examples=(int(cfg.eval_examples) if cfg.get("eval_examples", None) else None),
@@ -336,6 +379,10 @@ def run_experiment(cfg: DictConfig, experiment_name: str = "run") -> RunResult:
         persist_client_factors_at_rounds=tuple(
             int(round_idx) for round_idx in (cfg.get("persist_client_factors_at_rounds", []) or [])
         ),
+        persist_global_at_rounds=tuple(
+            int(round_idx) for round_idx in (cfg.get("persist_global_at_rounds", []) or [])
+        ),
+        checkpoint_context=checkpoint_context,
         generation_every=int(cfg.get("generation_every", 5)),
         generation_prompts=int(cfg.get("generation_prompts", 150)),
         generation_max_new_tokens=int(cfg.get("generation_max_new_tokens", 128)),
@@ -373,7 +420,10 @@ def run_experiment(cfg: DictConfig, experiment_name: str = "run") -> RunResult:
         logger,
         trusted_client=trusted_client,
     )
-    result = server.run(clients, fed.data, attack, seed=seed)
+    result = server.run(
+        clients, fed.data, attack, seed=seed,
+        initial_adapters=initial_adapters, initial_head=initial_head,
+    )
 
     # -- per-run summary for cross-seed analysis --------------------------
     summary = {
@@ -411,6 +461,9 @@ def run_experiment(cfg: DictConfig, experiment_name: str = "run") -> RunResult:
         # stopped. A DISTINCT outcome from "collapsed", and reported as such.
         "diverged_at_round": result.diverged_at_round,
         "rounds_completed": len(result.rounds),
+        "initial_checkpoint": str(source_checkpoint) if source_checkpoint else None,
+        "start_round": start_round,
+        "evaluation_split": scfg.evaluation_split,
         "final_asr": result.final_asr,
         "persistence": result.persistence.to_dict(),
     }

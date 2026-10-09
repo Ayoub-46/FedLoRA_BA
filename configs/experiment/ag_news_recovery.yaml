@@ -1,0 +1,31 @@
+# @package _global_
+defaults:
+  - override /data: ag_news
+  - override /model: bert_base
+  - override /attack: x4_backdoor
+
+experiment_name: ag_news_recovery
+device: auto
+evaluation_split: validation
+data:
+  server_clean_size: 500
+  validation_size: 500
+attack:
+  trigger: cf
+  target_label: 0
+  poison_mode: replace
+fl:
+  num_rounds: 8
+  local_steps: null
+recovery:
+  max_rounds: 20
+  asr_tolerance: 0.0
+  accuracy_tolerance: 0.02
+path_search:
+  restarts: 3
+  steps: 100
+  batch_size: 32
+  factor_lr: 0.001
+  base_lr: 0.00001
+  validation_grid: 21
+  test_grid: 41

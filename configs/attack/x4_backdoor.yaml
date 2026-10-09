@@ -6,3 +6,4 @@ attack_stop_round: null
 trigger: cf
 target_label: 0
 poison_fraction: 0.5
+poison_mode: append

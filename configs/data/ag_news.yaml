@@ -6,4 +6,6 @@
 name: ag_news
 num_train: 2000
 num_test: 500
+server_clean_size: 0
+validation_size: 0
 num_labels: 4
